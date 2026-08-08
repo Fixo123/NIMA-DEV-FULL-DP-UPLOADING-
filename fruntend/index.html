@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIMA DEV FULL DP</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at 50% 0%, #0a0518 0%, #1a0b2e 100%);
+            font-family: 'Rajdhani', sans-serif;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        /* Background Glow */
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 50%, rgba(120, 80, 255, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 50%, rgba(255, 80, 200, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            animation: rotate 30s linear infinite;
+        }
+
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Floating Particles */
+        .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 1;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(25px) saturate(180%);
+            -webkit-backdrop-filter: blur(25px) saturate(180%);
+            border-radius: 32px;
+            padding: 40px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-align: center;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 40px 90px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        .logo {
+            font-family: 'Orbitron', monospace;
+            font-size: 28px;
+            font-weight: 900;
+            background: linear-gradient(45deg, #ff6b9d, #c084fc, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(192, 132, 252, 0.3);
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            letter-spacing: 3px;
+            margin-bottom: 30px;
+            font-weight: 300;
+        }
+
+        .upload-area {
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 25px 15px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(0, 0, 0, 0.2);
+            position: relative;
+        }
+
+        .upload-area:hover {
+            border-color: rgba(192, 132, 252, 0.5);
+            background: rgba(192, 132, 252, 0.05);
+        }
+
+        .upload-area i {
+            font-size: 40px;
+            color: #c084fc;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .upload-area p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+        }
+
+        #file-name {
+            color: #ff6b9d;
+            font-weight: 600;
+            margin-top: 5px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .upload-area .remove-file {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: rgba(255, 0, 0, 0.2);
+            border: none;
+            color: #ff6b9d;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            display: none;
+            font-size: 12px;
+        }
+
+        .input-group {
+            display: flex;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .input-group input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 14px 16px;
+            color: white;
+            font-size: 16px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 500;
+            outline: none;
+        }
+
+        .input-group input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .input-group button {
+            background: linear-gradient(135deg, #c084fc, #8b5cf6);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Orbitron', monospace;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            letter-spacing: 1px;
+        }
+
+        .input-group button:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 25px rgba(192, 132, 252, 0.4);
+        }
+
+        .input-group button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .code-display {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: none;
+        }
+
+        .code-display.active {
+            display: block;
+        }
+
+        .code-display .label {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .code-display .code {
+            font-family: 'Orbitron', monospace;
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+            background: rgba(192, 132, 252, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            letter-spacing: 4px;
+            word-break: break-all;
+        }
+
+        .copy-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .copy-btn:hover {
+            background: rgba(192, 132, 252, 0.2);
+            border-color: #c084fc;
+        }
+
+        .status-msg {
+            margin-top: 15px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            min-height: 20px;
+        }
+
+        .status-msg.error {
+            color: #ff6b9d;
+        }
+        .status-msg.success {
+            color: #34d399;
+        }
+
+        .footer {
+            margin-top: 20px;
+            color: rgba(255, 255, 255, 0.2);
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+
+        .footer span {
+            color: #c084fc;
+        }
+
+        /* Responsive */
+        @media (max-width: 500px) {
+            .card {
+                padding: 25px 15px;
+            }
+            .logo {
+                font-size: 22px;
+            }
+            .input-group {
+                flex-direction: column;
+                background: transparent;
+                border: none;
+                gap: 10px;
+            }
+            .input-group input {
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+            }
+            .input-group button {
+                border-radius: 12px;
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Particles -->
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+        <div class="card">
+            <div class="logo">NIMA DEV FULL DP</div>
+            <div class="subtitle">✦ AUTO PROFILE SETUP ✦</div>
+
+            <!-- Upload Area -->
+            <div class="upload-area" id="uploadArea">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p>Click to upload Profile Picture</p>
+                <div id="file-name"></div>
+                <button class="remove-file" id="removeFile"><i class="fas fa-times"></i></button>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            </div>
+
+            <!-- Phone Input -->
+            <div class="input-group">
+                <input type="tel" id="phoneInput" placeholder="+94 712345678" value="">
+                <button id="pairBtn"><i class="fas fa-link" style="margin-right: 8px;"></i> PAIR</button>
+            </div>
+
+            <!-- Code Display -->
+            <div class="code-display" id="codeDisplay">
+                <div class="label">🔐 Your Pairing Code</div>
+                <div class="code" id="pairCode">------</div>
+                <button class="copy-btn" id="copyBtn"><i class="fas fa-copy"></i> Copy Code</button>
+            </div>
+
+            <div class="status-msg" id="statusMsg">Upload your image, enter number, and click PAIR.</div>
+            <div class="footer">Developed by <span>FIXO DEV</span> | NIMA</div>
+        </div>
+    </div>
+
+    <script>
+        // ======= UI ELEMENTS =======
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileNameDisplay = document.getElementById('file-name');
+        const removeFileBtn = document.getElementById('removeFile');
+        const phoneInput = document.getElementById('phoneInput');
+        const pairBtn = document.getElementById('pairBtn');
+        const codeDisplay = document.getElementById('codeDisplay');
+        const pairCodeSpan = document.getElementById('pairCode');
+        const copyBtn = document.getElementById('copyBtn');
+        const statusMsg = document.getElementById('statusMsg');
+
+        let selectedFile = null;
+
+        // ======= PARTICLES =======
+        function createParticles() {
+            const container = document.getElementById('particles');
+            for (let i = 0; i < 30; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                const size = Math.random() * 6 + 2;
+                p.style.width = size + 'px';
+                p.style.height = size + 'px';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.animationDuration = (Math.random() * 20 + 10) + 's';
+                p.style.animationDelay = (Math.random() * 5) + 's';
+                p.style.background = `rgba(${Math.floor(Math.random() * 155 + 100)}, ${Math.floor(Math.random() * 100 + 100)}, 255, ${Math.random() * 0.2 + 0.1})`;
+                container.appendChild(p);
+            }
+        }
+        createParticles();
+
+        // ======= FILE UPLOAD LOGIC =======
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                fileNameDisplay.textContent = `📸 ${file.name}`;
+                fileNameDisplay.style.display = 'block';
+                removeFileBtn.style.display = 'block';
+                statusMsg.textContent = 'Image ready! Enter number and pair.';
+                statusMsg.className = 'status-msg';
+            }
+        });
+
+        removeFileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectedFile = null;
+            fileInput.value = '';
+            fileNameDisplay.style.display = 'none';
+            removeFileBtn.style.display = 'none';
+            statusMsg.textContent = 'Upload your image, enter number, and click PAIR.';
+            statusMsg.className = 'status-msg';
+        });
+
+        // ======= PAIR BUTTON =======
+        pairBtn.addEventListener('click', async () => {
+            const number = phoneInput.value.trim();
+            if (!number) {
+                statusMsg.textContent = '❌ Please enter your WhatsApp number.';
+                statusMsg.className = 'status-msg error';
+                return;
+            }
+            if (!selectedFile) {
+                statusMsg.textContent = '❌ Please upload a profile picture first.';
+                statusMsg.className = 'status-msg error';
+                return;
+            }
+
+            // Disable button
+            pairBtn.disabled = true;
+            pairBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            statusMsg.textContent = '⏳ Uploading image & pairing...';
+            statusMsg.className = 'status-msg';
+            codeDisplay.classList.remove('active');
+
+            const formData = new FormData();
+            formData.append('number', number);
+            formData.append('dpImage', selectedFile);
+
+            try {
+                const response = await fetch('/pair', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    // Show Pair Code
+                    pairCodeSpan.textContent = data.code || 'ERROR';
+                    codeDisplay.classList.add('active');
+                    statusMsg.textContent = '✅ Pairing code generated! Copy and use in WhatsApp.';
+                    statusMsg.className = 'status-msg success';
+
+                    // Reset file selection (so user can't reuse accidentally, but keep it)
+                    // Actually keep it so they know what they uploaded
+                } else {
+                    statusMsg.textContent = `❌ ${data.message || 'Pairing failed.'}`;
+                    statusMsg.className = 'status-msg error';
+                }
+            } catch (err) {
+                console.error(err);
+                statusMsg.textContent = '❌ Server error. Please try again.';
+                statusMsg.className = 'status-msg error';
+            } finally {
+                pairBtn.disabled = false;
+                pairBtn.innerHTML = '<i class="fas fa-link" style="margin-right: 8px;"></i> PAIR';
+            }
+        });
+
+        // ======= COPY CODE =======
+        copyBtn.addEventListener('click', () => {
+            const code = pairCodeSpan.textContent;
+            if (code && code !== '------') {
+                navigator.clipboard.writeText(code).then(() => {
+                    const originalText = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                    setTimeout(() => copyBtn.innerHTML = originalText, 2000);
+                }).catch(() => {
+                    // Fallback
+                    const textarea = document.createElement('textarea');
+                    textarea.value = code;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    textarea.remove();
+                    alert('Code copied to clipboard!');
+                });
+            }
+        });
+
+        // Enter key support
+        phoneInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') pairBtn.click();
+        });
+    </script>
+</body>
+  </html>
