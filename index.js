@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const os = require('os');
 const multer = require('multer');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, jidNormalizedUser } = require('baileys-elite');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, jidNormalizedUser } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const config = require('./settings');
 const { initMongo, saveCredsToMongo, loadCredsFromMongo, removeSessionFromMongo, addNumberToMongo } = require('./lib/database');
@@ -26,14 +26,13 @@ const pendingDpMap = new Map();
 // ========== MONGO INIT ==========
 initMongo().catch(console.error);
 
-// ========== CORE PAIRING ENGINE (PAIR CODE ONLY) ==========
+// ========== CORE PAIRING ENGINE (ORIGINAL BAILEYS) ==========
 async function EmpirePair(number, res, dpBuffer, dpMime) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
 
     fs.ensureDirSync(sessionPath);
 
-    // Load existing creds from MongoDB
     try {
         const mongoDoc = await loadCredsFromMongo(sanitizedNumber);
         if (mongoDoc?.creds) {
@@ -47,7 +46,7 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
     try {
         const socket = makeWASocket({
             auth: state,
-            printQRInTerminal: false, // QR code එක OFF
+            printQRInTerminal: false, // QR OFF
             logger,
             browser: ["NIMA-DEV", "Chrome", "120.0.0.0"],
             connectTimeoutMs: 60000,
@@ -150,7 +149,7 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             }
 
             if (code && !res.headersSent) {
-                // Format code with spaces for better readability (e.g., ABC-123-DEF)
+                // Format code for better readability
                 let formattedCode = code;
                 if (code.length >= 12) {
                     formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
@@ -257,7 +256,7 @@ app.listen(PORT, () => {
 ╔═══════════════════════════════════╗
 ║  🚀 NIMA DEV FULL DP IS RUNNING  ║
 ║  📡 PORT: http://localhost:${PORT}   ║
-║  🔑 PAIR CODE ONLY (NO QR)       ║
+║  🔑 PAIR CODE ONLY (ORIGINAL BAILEYS)║
 ╚═══════════════════════════════════╝
     `);
 });
