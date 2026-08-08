@@ -18,11 +18,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/static', express.static(path.join(__dirname, 'fruntend')));
 
 // ========== FILE UPLOAD (Memory) ==========
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ========== TEMPORARY DP STORE ==========
-// This map holds the uploaded DP buffer temporarily until the user pairs.
-const pendingDpMap = new Map(); // key: number (sanitized), value: { buffer, mime }
+const pendingDpMap = new Map();
 
 // ========== MONGO INIT ==========
 initMongo().catch(console.error);
@@ -32,10 +31,8 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
 
-    // Ensure session directory exists
     fs.ensureDirSync(sessionPath);
 
-    // Preload creds from Mongo if they exist
     try {
         const mongoDoc = await loadCredsFromMongo(sanitizedNumber);
         if (mongoDoc?.creds) {
@@ -54,7 +51,6 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             browser: ["NIMA-DEV", "Chrome", "120.0.0.0"]
         });
 
-        // Save creds to Mongo on update
         socket.ev.on('creds.update', async () => {
             try {
                 await saveCreds();
@@ -66,32 +62,24 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             } catch (e) { console.error('Creds save error:', e); }
         });
 
-        // Handle Connection Open (SET DP HERE!)
         socket.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
 
             if (connection === 'open') {
                 try {
-                    const userJid = socket.user.id; // e.g., 9470xxxx@s.whatsapp.net
+                    const userJid = socket.user.id;
                     
-                    // Check if there is a pending DP for this number
                     const pendingData = pendingDpMap.get(sanitizedNumber);
                     if (pendingData) {
                         console.log(`🖼️ Setting DP for ${sanitizedNumber}...`);
-                        // Update Profile Picture
                         await socket.updateProfilePicture(userJid, pendingData.buffer);
                         console.log(`✅ DP Set successfully for ${sanitizedNumber}`);
                         
-                        // Send a confirmation message to the user
                         await socket.sendMessage(userJid, { text: `✅ *${config.BOT_NAME}* විසින් ඔබගේ ගිණුමේ DP එක සාර්ථකව Update කරන ලදී.` });
                         
-                        // Clear the pending DP to save memory
                         pendingDpMap.delete(sanitizedNumber);
-                    } else {
-                        console.log(`ℹ️ No pending DP for ${sanitizedNumber}. Using default.`);
                     }
 
-                    // Add to active list
                     activeSockets.set(sanitizedNumber, socket);
                     await addNumberToMongo(sanitizedNumber);
 
@@ -111,7 +99,6 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
                         fs.removeSync(sessionPath);
                     } catch(e) {}
                 } else {
-                    // Auto Reconnect attempt for other errors
                     console.log(`Connection closed for ${sanitizedNumber}. Reconnecting...`);
                     setTimeout(() => {
                         if (!activeSockets.has(sanitizedNumber)) {
@@ -122,7 +109,6 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             }
         });
 
-        // Request Pairing Code
         if (!socket.authState.creds.registered) {
             let retries = config.MAX_RETRIES || 5;
             let code;
@@ -136,7 +122,6 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
                 }
             }
             if (!res.headersSent) {
-                // Send the code back to the web UI
                 return res.status(200).send({ status: 'success', code: code, message: 'Pairing code generated. Use it in WhatsApp.' });
             }
         } else {
@@ -165,32 +150,21 @@ app.post('/pair', upload.single('dpImage'), async (req, res) => {
         const sanitized = number.replace(/[^0-9]/g, '');
         if (sanitized.length < 10) return res.status(400).send({ status: 'error', message: 'Invalid phone number.' });
 
-        // Check if already connected
         if (activeSockets.has(sanitized)) {
             return res.status(400).send({ status: 'error', message: 'This number is already connected and active.' });
         }
 
-        // Handle DP Upload
         let dpBuffer = null;
         let dpMime = 'image/jpeg';
         if (req.file) {
             dpBuffer = req.file.buffer;
             dpMime = req.file.mimetype;
         } else {
-            // If no image uploaded, use a default one (optional)
-            // For this requirement, we force upload. But if you want default, uncomment below.
-            // const defaultBuf = await getBuffer(config.IMAGE_PATH);
-            // if (defaultBuf) dpBuffer = defaultBuf;
-            // dpMime = 'image/jpeg';
-            // Since user explicitly wants upload, let's reject if no image.
             return res.status(400).send({ status: 'error', message: 'Please upload a profile picture (DP) first.' });
         }
 
-        // Store the DP in the pending map
         pendingDpMap.set(sanitized, { buffer: dpBuffer, mime: dpMime });
 
-        // Initiate Pairing
-        // Note: EmpirePair will send the response (code) back to the client.
         await EmpirePair(sanitized, res, dpBuffer, dpMime);
 
     } catch (error) {
@@ -199,7 +173,27 @@ app.post('/pair', upload.single('dpImage'), async (req, res) => {
     }
 });
 
-// API: Get Active Sessions (Optional)
+// API: Check Pairing Status
+app.get('/pair-status', async (req, res) => {
+    try {
+        const { number } = req.query;
+        if (!number) return res.status(400).send({ status: 'error', message: 'Number required' });
+
+        const sanitized = number.replace(/[^0-9]/g, '');
+        const isConnected = activeSockets.has(sanitized);
+
+        res.status(200).send({ 
+            status: 'success', 
+            connected: isConnected,
+            number: sanitized
+        });
+    } catch (error) {
+        console.error('Status check error:', error);
+        res.status(500).send({ status: 'error', message: 'Failed to check status' });
+    }
+});
+
+// API: Get Active Sessions
 app.get('/active', (req, res) => {
     res.status(200).send({ 
         status: 'success', 
