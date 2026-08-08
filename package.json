@@ -7,15 +7,15 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "axios": "^1.6.0",
+    "axios": "^1.19.0",
     "baileys-elite": "*",
-    "express": "^4.18.2",
-    "fs-extra": "^11.2.0",
-    "mongodb": "^5.9.0",
-    "multer": "^1.4.5-lts.1",
-    "pino": "^8.17.2",
+    "express": "^5.2.1",
+    "fs-extra": "^11.4.0",
+    "mongodb": "^7.5.0",
+    "multer": "^2.2.0",
+    "pino": "^10.3.1",
     "qrcode-terminal": "^0.12.0",
-    "moment-timezone": "^0.5.45"
+    "moment-timezone": "^0.6.3"
   },
   "engines": {
     "node": "20.x"
