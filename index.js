@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/static', express.static(path.join(__dirname, 'fruntend')));
 
-// ========== FILE UPLOAD (Memory) ==========
+// ========== FILE UPLOAD ==========
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ========== TEMPORARY DP STORE ==========
@@ -26,13 +26,14 @@ const pendingDpMap = new Map();
 // ========== MONGO INIT ==========
 initMongo().catch(console.error);
 
-// ========== CORE PAIRING ENGINE ==========
+// ========== CORE PAIRING ENGINE (PAIR CODE ONLY) ==========
 async function EmpirePair(number, res, dpBuffer, dpMime) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
 
     fs.ensureDirSync(sessionPath);
 
+    // Load existing creds from MongoDB
     try {
         const mongoDoc = await loadCredsFromMongo(sanitizedNumber);
         if (mongoDoc?.creds) {
@@ -46,11 +47,15 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
     try {
         const socket = makeWASocket({
             auth: state,
-            printQRInTerminal: false,
+            printQRInTerminal: false, // QR code එක OFF
             logger,
-            browser: ["NIMA-DEV", "Chrome", "120.0.0.0"]
+            browser: ["NIMA-DEV", "Chrome", "120.0.0.0"],
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 10000
         });
 
+        // ===== CREDS SAVE =====
         socket.ev.on('creds.update', async () => {
             try {
                 await saveCreds();
@@ -58,30 +63,36 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
                 if (fs.existsSync(credsPath)) {
                     const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
                     await saveCredsToMongo(sanitizedNumber, credsData);
+                    console.log('✅ Creds saved to MongoDB');
                 }
             } catch (e) { console.error('Creds save error:', e); }
         });
 
+        // ===== CONNECTION UPDATE =====
         socket.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
 
             if (connection === 'open') {
                 try {
+                    console.log(`✅ Connection OPEN for ${sanitizedNumber}`);
                     const userJid = socket.user.id;
                     
                     const pendingData = pendingDpMap.get(sanitizedNumber);
                     if (pendingData) {
                         console.log(`🖼️ Setting DP for ${sanitizedNumber}...`);
-                        await socket.updateProfilePicture(userJid, pendingData.buffer);
-                        console.log(`✅ DP Set successfully for ${sanitizedNumber}`);
-                        
-                        await socket.sendMessage(userJid, { text: `✅ *${config.BOT_NAME}* විසින් ඔබගේ ගිණුමේ DP එක සාර්ථකව Update කරන ලදී.` });
-                        
+                        try {
+                            await socket.updateProfilePicture(userJid, pendingData.buffer);
+                            console.log(`✅ DP Set successfully for ${sanitizedNumber}`);
+                            await socket.sendMessage(userJid, { text: `✅ *${config.BOT_NAME}* විසින් ඔබගේ ගිණුමේ DP එක සාර්ථකව Update කරන ලදී.` });
+                        } catch (dpErr) {
+                            console.error('DP Set Error:', dpErr);
+                        }
                         pendingDpMap.delete(sanitizedNumber);
                     }
 
                     activeSockets.set(sanitizedNumber, socket);
                     await addNumberToMongo(sanitizedNumber);
+                    console.log(`✅ ${sanitizedNumber} added to active sessions`);
 
                 } catch (err) {
                     console.error('Error in connection.open handler:', err);
@@ -91,15 +102,17 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const isLoggedOut = statusCode === 401 || lastDisconnect?.error?.message?.includes('logged out');
+                console.log(`🔴 Connection closed for ${sanitizedNumber}. Logged out: ${isLoggedOut}`);
+                
                 if (isLoggedOut) {
-                    console.log(`User ${sanitizedNumber} logged out. Cleaning up.`);
                     try {
                         activeSockets.delete(sanitizedNumber);
                         await removeSessionFromMongo(sanitizedNumber);
                         fs.removeSync(sessionPath);
-                    } catch(e) {}
+                        console.log(`🧹 Cleaned up session for ${sanitizedNumber}`);
+                    } catch(e) { console.error('Cleanup error:', e); }
                 } else {
-                    console.log(`Connection closed for ${sanitizedNumber}. Reconnecting...`);
+                    console.log(`🔄 Reconnecting ${sanitizedNumber} in 10s...`);
                     setTimeout(() => {
                         if (!activeSockets.has(sanitizedNumber)) {
                             EmpirePair(number, res, dpBuffer, dpMime).catch(console.error);
@@ -109,39 +122,77 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             }
         });
 
+        // ===== PAIRING CODE ONLY (NO QR) =====
         if (!socket.authState.creds.registered) {
-            let retries = config.MAX_RETRIES || 5;
-            let code;
+            console.log(`🔑 Requesting pairing code for ${sanitizedNumber}...`);
+            let retries = 5;
+            let code = null;
+            
             while (retries > 0) {
                 try {
                     code = await socket.requestPairingCode(sanitizedNumber);
+                    console.log(`✅ Pairing code generated: ${code}`);
                     break;
                 } catch (error) {
+                    console.error(`❌ Pairing attempt failed (${retries} retries left):`, error.message);
                     retries--;
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    if (retries === 0) {
+                        if (!res.headersSent) {
+                            return res.status(500).send({ 
+                                status: 'error', 
+                                message: 'Failed to generate pairing code: ' + error.message 
+                            });
+                        }
+                        return;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                 }
             }
-            if (!res.headersSent) {
-                return res.status(200).send({ status: 'success', code: code, message: 'Pairing code generated. Use it in WhatsApp.' });
+
+            if (code && !res.headersSent) {
+                // Format code with spaces for better readability (e.g., ABC-123-DEF)
+                let formattedCode = code;
+                if (code.length >= 12) {
+                    formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
+                } else if (code.length >= 8) {
+                    formattedCode = code.match(/.{1,4}/g)?.join(' ') || code;
+                }
+                
+                console.log(`📤 Sending code: ${formattedCode}`);
+                return res.status(200).send({ 
+                    status: 'success', 
+                    code: formattedCode,
+                    rawCode: code,
+                    message: 'Pairing code generated. Use it in WhatsApp Web.' 
+                });
             }
         } else {
-            if (!res.headersSent) return res.status(400).send({ status: 'failed', message: 'Already registered/paired.' });
+            console.log(`ℹ️ ${sanitizedNumber} already registered`);
+            if (!res.headersSent) {
+                return res.status(400).send({ 
+                    status: 'failed', 
+                    message: 'Already registered/paired.' 
+                });
+            }
         }
 
     } catch (error) {
-        console.error('EmpirePair Error:', error);
-        if (!res.headersSent) res.status(503).send({ status: 'error', message: 'Service Unavailable' });
+        console.error('❌ EmpirePair Error:', error);
+        if (!res.headersSent) {
+            res.status(503).send({ 
+                status: 'error', 
+                message: 'Service Unavailable: ' + error.message 
+            });
+        }
     }
 }
 
 // ========== ROUTES ==========
 
-// Serve Main Web Page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'fruntend', 'index.html'));
 });
 
-// API: Upload DP + Request Pair Code
 app.post('/pair', upload.single('dpImage'), async (req, res) => {
     try {
         const { number } = req.body;
@@ -173,7 +224,6 @@ app.post('/pair', upload.single('dpImage'), async (req, res) => {
     }
 });
 
-// API: Check Pairing Status
 app.get('/pair-status', async (req, res) => {
     try {
         const { number } = req.query;
@@ -193,7 +243,6 @@ app.get('/pair-status', async (req, res) => {
     }
 });
 
-// API: Get Active Sessions
 app.get('/active', (req, res) => {
     res.status(200).send({ 
         status: 'success', 
@@ -208,11 +257,11 @@ app.listen(PORT, () => {
 ╔═══════════════════════════════════╗
 ║  🚀 NIMA DEV FULL DP IS RUNNING  ║
 ║  📡 PORT: http://localhost:${PORT}   ║
+║  🔑 PAIR CODE ONLY (NO QR)       ║
 ╚═══════════════════════════════════╝
     `);
 });
 
-// Cleanup on exit
 process.on('exit', () => {
     activeSockets.forEach((socket, number) => {
         try { socket.ws?.close(); } catch(e) {}
