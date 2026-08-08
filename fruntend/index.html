@@ -24,7 +24,6 @@
             padding: 20px;
         }
 
-        /* Background Glow */
         body::before {
             content: '';
             position: absolute;
@@ -43,7 +42,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Floating Particles */
         .particles {
             position: absolute;
             top: 0;
@@ -274,6 +272,9 @@
         .status-msg.success {
             color: #34d399;
         }
+        .status-msg.loading {
+            color: #fbbf24;
+        }
 
         .footer {
             margin-top: 20px;
@@ -286,7 +287,6 @@
             color: #c084fc;
         }
 
-        /* Responsive */
         @media (max-width: 500px) {
             .card {
                 padding: 25px 15px;
@@ -314,7 +314,6 @@
 </head>
 <body>
 
-    <!-- Particles -->
     <div class="particles" id="particles"></div>
 
     <div class="container">
@@ -322,7 +321,6 @@
             <div class="logo">NIMA DEV FULL DP</div>
             <div class="subtitle">✦ AUTO PROFILE SETUP ✦</div>
 
-            <!-- Upload Area -->
             <div class="upload-area" id="uploadArea">
                 <i class="fas fa-cloud-upload-alt"></i>
                 <p>Click to upload Profile Picture</p>
@@ -331,13 +329,11 @@
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
             </div>
 
-            <!-- Phone Input -->
             <div class="input-group">
                 <input type="tel" id="phoneInput" placeholder="+94 712345678" value="">
                 <button id="pairBtn"><i class="fas fa-link" style="margin-right: 8px;"></i> PAIR</button>
             </div>
 
-            <!-- Code Display -->
             <div class="code-display" id="codeDisplay">
                 <div class="label">🔐 Your Pairing Code</div>
                 <div class="code" id="pairCode">------</div>
@@ -345,12 +341,11 @@
             </div>
 
             <div class="status-msg" id="statusMsg">Upload your image, enter number, and click PAIR.</div>
-            <div class="footer">Developed by <span>FIXO DEV</span> | NIMA</div>
+            <div class="footer">ᴅᴇᴠᴇʟᴏᴘᴇᴅ ʙʏ <span>ɴɪᴍᴀ ᴅᴇᴠ</span> | ꜰɪxᴏ ᴅᴇᴠ</div>
         </div>
     </div>
 
     <script>
-        // ======= UI ELEMENTS =======
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const fileNameDisplay = document.getElementById('file-name');
@@ -363,6 +358,7 @@
         const statusMsg = document.getElementById('statusMsg');
 
         let selectedFile = null;
+        let statusInterval = null;
 
         // ======= PARTICLES =======
         function createParticles() {
@@ -382,7 +378,7 @@
         }
         createParticles();
 
-        // ======= FILE UPLOAD LOGIC =======
+        // ======= FILE UPLOAD =======
         uploadArea.addEventListener('click', () => fileInput.click());
 
         fileInput.addEventListener('change', (e) => {
@@ -407,6 +403,30 @@
             statusMsg.className = 'status-msg';
         });
 
+        // ======= CHECK PAIR STATUS =======
+        async function checkPairStatus(number) {
+            try {
+                const response = await fetch(`/pair-status?number=${encodeURIComponent(number)}`);
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.connected) {
+                    statusMsg.textContent = '✅ Successfully connected to WhatsApp! DP Updated!';
+                    statusMsg.className = 'status-msg success';
+                    pairBtn.disabled = false;
+                    pairBtn.innerHTML = '<i class="fas fa-link" style="margin-right: 8px;"></i> PAIR';
+                    if (statusInterval) {
+                        clearInterval(statusInterval);
+                        statusInterval = null;
+                    }
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Status check failed:', error);
+                return false;
+            }
+        }
+
         // ======= PAIR BUTTON =======
         pairBtn.addEventListener('click', async () => {
             const number = phoneInput.value.trim();
@@ -421,11 +441,15 @@
                 return;
             }
 
-            // Disable button
+            if (statusInterval) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+
             pairBtn.disabled = true;
             pairBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             statusMsg.textContent = '⏳ Uploading image & pairing...';
-            statusMsg.className = 'status-msg';
+            statusMsg.className = 'status-msg loading';
             codeDisplay.classList.remove('active');
 
             const formData = new FormData();
@@ -441,23 +465,30 @@
                 const data = await response.json();
 
                 if (response.ok && data.status === 'success') {
-                    // Show Pair Code
                     pairCodeSpan.textContent = data.code || 'ERROR';
                     codeDisplay.classList.add('active');
-                    statusMsg.textContent = '✅ Pairing code generated! Copy and use in WhatsApp.';
+                    statusMsg.textContent = '✅ Pairing code generated! Waiting for WhatsApp connection...';
                     statusMsg.className = 'status-msg success';
 
-                    // Reset file selection (so user can't reuse accidentally, but keep it)
-                    // Actually keep it so they know what they uploaded
+                    // Start checking status every 5 seconds
+                    statusInterval = setInterval(async () => {
+                        const connected = await checkPairStatus(number);
+                        if (connected) {
+                            clearInterval(statusInterval);
+                            statusInterval = null;
+                        }
+                    }, 5000);
+
                 } else {
                     statusMsg.textContent = `❌ ${data.message || 'Pairing failed.'}`;
                     statusMsg.className = 'status-msg error';
+                    pairBtn.disabled = false;
+                    pairBtn.innerHTML = '<i class="fas fa-link" style="margin-right: 8px;"></i> PAIR';
                 }
             } catch (err) {
                 console.error(err);
                 statusMsg.textContent = '❌ Server error. Please try again.';
                 statusMsg.className = 'status-msg error';
-            } finally {
                 pairBtn.disabled = false;
                 pairBtn.innerHTML = '<i class="fas fa-link" style="margin-right: 8px;"></i> PAIR';
             }
@@ -472,7 +503,6 @@
                     copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
                     setTimeout(() => copyBtn.innerHTML = originalText, 2000);
                 }).catch(() => {
-                    // Fallback
                     const textarea = document.createElement('textarea');
                     textarea.value = code;
                     document.body.appendChild(textarea);
@@ -484,10 +514,9 @@
             }
         });
 
-        // Enter key support
         phoneInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') pairBtn.click();
         });
     </script>
 </body>
-  </html>
+</html>
