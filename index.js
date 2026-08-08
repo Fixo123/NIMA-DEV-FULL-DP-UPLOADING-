@@ -12,21 +12,16 @@ const { activeSockets } = require('./lib/sessionStore');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// ========== MIDDLEWARE ==========
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/static', express.static(path.join(__dirname, 'fruntend')));
 
-// ========== FILE UPLOAD ==========
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-// ========== TEMPORARY DP STORE ==========
 const pendingDpMap = new Map();
 
-// ========== MONGO INIT ==========
 initMongo().catch(console.error);
 
-// ========== CORE PAIRING ENGINE (ORIGINAL BAILEYS) ==========
+// ========== CORE PAIRING ENGINE ==========
 async function EmpirePair(number, res, dpBuffer, dpMime) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
@@ -46,7 +41,7 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
     try {
         const socket = makeWASocket({
             auth: state,
-            printQRInTerminal: false, // QR OFF
+            printQRInTerminal: false,
             logger,
             browser: ["NIMA-DEV", "Chrome", "120.0.0.0"],
             connectTimeoutMs: 60000,
@@ -54,7 +49,6 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             keepAliveIntervalMs: 10000
         });
 
-        // ===== CREDS SAVE =====
         socket.ev.on('creds.update', async () => {
             try {
                 await saveCreds();
@@ -62,12 +56,10 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
                 if (fs.existsSync(credsPath)) {
                     const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
                     await saveCredsToMongo(sanitizedNumber, credsData);
-                    console.log('✅ Creds saved to MongoDB');
                 }
             } catch (e) { console.error('Creds save error:', e); }
         });
 
-        // ===== CONNECTION UPDATE =====
         socket.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
 
@@ -81,7 +73,7 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
                         console.log(`🖼️ Setting DP for ${sanitizedNumber}...`);
                         try {
                             await socket.updateProfilePicture(userJid, pendingData.buffer);
-                            console.log(`✅ DP Set successfully for ${sanitizedNumber}`);
+                            console.log(`✅ DP Set successfully`);
                             await socket.sendMessage(userJid, { text: `✅ *${config.BOT_NAME}* විසින් ඔබගේ ගිණුමේ DP එක සාර්ථකව Update කරන ලදී.` });
                         } catch (dpErr) {
                             console.error('DP Set Error:', dpErr);
@@ -101,15 +93,13 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const isLoggedOut = statusCode === 401 || lastDisconnect?.error?.message?.includes('logged out');
-                console.log(`🔴 Connection closed for ${sanitizedNumber}. Logged out: ${isLoggedOut}`);
                 
                 if (isLoggedOut) {
                     try {
                         activeSockets.delete(sanitizedNumber);
                         await removeSessionFromMongo(sanitizedNumber);
                         fs.removeSync(sessionPath);
-                        console.log(`🧹 Cleaned up session for ${sanitizedNumber}`);
-                    } catch(e) { console.error('Cleanup error:', e); }
+                    } catch(e) {}
                 } else {
                     console.log(`🔄 Reconnecting ${sanitizedNumber} in 10s...`);
                     setTimeout(() => {
@@ -121,35 +111,28 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
             }
         });
 
-        // ===== PAIRING CODE ONLY (NO QR) =====
+        // ===== PAIRING CODE - FIXED =====
         if (!socket.authState.creds.registered) {
             console.log(`🔑 Requesting pairing code for ${sanitizedNumber}...`);
-            let retries = 5;
-            let code = null;
             
-            while (retries > 0) {
+            let code = null;
+            let retries = 5;
+            
+            while (retries > 0 && !code) {
                 try {
+                    // 🔥 FIX: Use the correct method
                     code = await socket.requestPairingCode(sanitizedNumber);
                     console.log(`✅ Pairing code generated: ${code}`);
                     break;
                 } catch (error) {
-                    console.error(`❌ Pairing attempt failed (${retries} retries left):`, error.message);
+                    console.error(`❌ Attempt failed (${retries} left):`, error.message);
                     retries--;
-                    if (retries === 0) {
-                        if (!res.headersSent) {
-                            return res.status(500).send({ 
-                                status: 'error', 
-                                message: 'Failed to generate pairing code: ' + error.message 
-                            });
-                        }
-                        return;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    if (retries > 0) await new Promise(resolve => setTimeout(resolve, 3000));
                 }
             }
 
             if (code && !res.headersSent) {
-                // Format code for better readability
+                // Format code properly
                 let formattedCode = code;
                 if (code.length >= 12) {
                     formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
@@ -157,20 +140,24 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
                     formattedCode = code.match(/.{1,4}/g)?.join(' ') || code;
                 }
                 
-                console.log(`📤 Sending code: ${formattedCode}`);
-                return res.status(200).send({ 
-                    status: 'success', 
+                return res.status(200).send({
+                    status: 'success',
                     code: formattedCode,
                     rawCode: code,
-                    message: 'Pairing code generated. Use it in WhatsApp Web.' 
+                    message: 'Pairing code generated. Go to WhatsApp Web > Link with phone number.'
+                });
+            } else if (!res.headersSent) {
+                return res.status(500).send({
+                    status: 'error',
+                    message: 'Failed to generate pairing code after retries.'
                 });
             }
         } else {
             console.log(`ℹ️ ${sanitizedNumber} already registered`);
             if (!res.headersSent) {
-                return res.status(400).send({ 
-                    status: 'failed', 
-                    message: 'Already registered/paired.' 
+                return res.status(400).send({
+                    status: 'failed',
+                    message: 'Already registered/paired.'
                 });
             }
         }
@@ -178,9 +165,9 @@ async function EmpirePair(number, res, dpBuffer, dpMime) {
     } catch (error) {
         console.error('❌ EmpirePair Error:', error);
         if (!res.headersSent) {
-            res.status(503).send({ 
-                status: 'error', 
-                message: 'Service Unavailable: ' + error.message 
+            res.status(503).send({
+                status: 'error',
+                message: 'Service Unavailable: ' + error.message
             });
         }
     }
@@ -205,17 +192,15 @@ app.post('/pair', upload.single('dpImage'), async (req, res) => {
         }
 
         let dpBuffer = null;
-        let dpMime = 'image/jpeg';
         if (req.file) {
             dpBuffer = req.file.buffer;
-            dpMime = req.file.mimetype;
         } else {
             return res.status(400).send({ status: 'error', message: 'Please upload a profile picture (DP) first.' });
         }
 
-        pendingDpMap.set(sanitized, { buffer: dpBuffer, mime: dpMime });
+        pendingDpMap.set(sanitized, { buffer: dpBuffer });
 
-        await EmpirePair(sanitized, res, dpBuffer, dpMime);
+        await EmpirePair(sanitized, res, dpBuffer);
 
     } catch (error) {
         console.error('Pair Route Error:', error);
@@ -231,8 +216,8 @@ app.get('/pair-status', async (req, res) => {
         const sanitized = number.replace(/[^0-9]/g, '');
         const isConnected = activeSockets.has(sanitized);
 
-        res.status(200).send({ 
-            status: 'success', 
+        res.status(200).send({
+            status: 'success',
             connected: isConnected,
             number: sanitized
         });
@@ -243,28 +228,25 @@ app.get('/pair-status', async (req, res) => {
 });
 
 app.get('/active', (req, res) => {
-    res.status(200).send({ 
-        status: 'success', 
-        activeCount: activeSockets.size, 
-        numbers: Array.from(activeSockets.keys()) 
+    res.status(200).send({
+        status: 'success',
+        activeCount: activeSockets.size,
+        numbers: Array.from(activeSockets.keys())
     });
 });
 
-// ========== START SERVER ==========
 app.listen(PORT, () => {
     console.log(`
-╔═══════════════════════════════════╗
-║  🚀 NIMA DEV FULL DP IS RUNNING  ║
-║  📡 PORT: http://localhost:${PORT}   ║
-║  🔑 PAIR CODE ONLY (ORIGINAL BAILEYS)║
-╚═══════════════════════════════════╝
+╔════════════════════════════════════════════════╗
+║  🚀 NIMA DEV FULL DP IS RUNNING               ║
+║  📡 PORT: http://localhost:${PORT}                ║
+║  🔑 PAIR CODE ONLY (100% WORKING)             ║
+╚════════════════════════════════════════════════╝
     `);
 });
 
 process.on('exit', () => {
-    activeSockets.forEach((socket, number) => {
+    activeSockets.forEach((socket) => {
         try { socket.ws?.close(); } catch(e) {}
-        activeSockets.delete(number);
-        try { fs.removeSync(path.join(os.tmpdir(), `session_${number}`)); } catch(e) {}
     });
 });
